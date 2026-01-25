@@ -1,0 +1,78 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "CZ/SK School & Work Calendar",
+        "description": "Set up a calendar for Czech Republic or Slovakia with holidays, vacations and workday detection.",
+        "data": {
+          "country": "Country"
+        }
+      },
+      "region": {
+        "title": "Select Region",
+        "description": "Select your region for correct spring vacation dates.",
+        "data": {
+          "region": "Region"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This country/region combination is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "CZ/SK Calendar Options",
+        "data": {
+          "region": "Region"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "workday": {
+        "name": "Workday"
+      },
+      "school_day": {
+        "name": "School Day"
+      },
+      "holiday": {
+        "name": "Holiday"
+      },
+      "vacation": {
+        "name": "Vacation"
+      },
+      "holiday_name": {
+        "name": "Holiday Name"
+      },
+      "vacation_name": {
+        "name": "Vacation Name"
+      },
+      "next_holiday": {
+        "name": "Next Holiday"
+      },
+      "next_vacation": {
+        "name": "Next Vacation"
+      },
+      "days_to_holiday": {
+        "name": "Days to Holiday"
+      },
+      "days_to_vacation": {
+        "name": "Days to Vacation"
+      }
+    },
+    "calendar": {
+      "holidays": {
+        "name": "Holidays"
+      },
+      "vacations": {
+        "name": "School Vacations"
+      },
+      "combined": {
+        "name": "Holidays & Vacations"
+      }
+    }
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "CZ/SK Školský a pracovný kalendár",
+        "description": "Nastavte kalendár pre Českú republiku alebo Slovensko so sviatkami, prázdninami a detekciou pracovných dní.",
+        "data": {
+          "country": "Krajina"
+        }
+      },
+      "region": {
+        "title": "Vyberte región",
+        "description": "Vyberte svoj región pre správne termíny jarných prázdnin.",
+        "data": {
+          "region": "Región"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Táto kombinácia krajina/región je už nakonfigurovaná."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Nastavenie CZ/SK kalendára",
+        "data": {
+          "region": "Región"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "workday": {
+        "name": "Pracovný deň"
+      },
+      "school_day": {
+        "name": "Školský deň"
+      },
+      "holiday": {
+        "name": "Sviatok"
+      },
+      "vacation": {
+        "name": "Prázdniny"
+      },
+      "holiday_name": {
+        "name": "Názov sviatku"
+      },
+      "vacation_name": {
+        "name": "Názov prázdnin"
+      },
+      "next_holiday": {
+        "name": "Ďalší sviatok"
+      },
+      "next_vacation": {
+        "name": "Ďalšie prázdniny"
+      },
+      "days_to_holiday": {
+        "name": "Dní do sviatku"
+      },
+      "days_to_vacation": {
+        "name": "Dní do prázdnin"
+      }
+    },
+    "calendar": {
+      "holidays": {
+        "name": "Sviatky"
+      },
+      "vacations": {
+        "name": "Školské prázdniny"
+      },
+      "combined": {
+        "name": "Sviatky a prázdniny"
+      }
+    }
+  }
+}

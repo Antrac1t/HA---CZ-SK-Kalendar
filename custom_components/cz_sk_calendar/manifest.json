@@ -1,0 +1,12 @@
+{
+  "domain": "cz_sk_calendar",
+  "name": "CZ/SK School & Work Calendar",
+  "codeowners": ["@joshuaaaaa"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/joshuaaaaa/HA---CZ-SK-Kalendar",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/joshuaaaaa/HA---CZ-SK-Kalendar/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}
