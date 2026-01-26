@@ -5,6 +5,9 @@
 
 Dynamický kalendář a senzory školních a pracovních dnů pro **Českou republiku** a **Slovensko**.
 
+<img width="344" height="528" alt="image" src="https://github.com/user-attachments/assets/9ea62046-44b4-4a91-b8e6-d83d405d14e7" />
+
+
 ## Funkce
 
 ### Automatické rozpoznání
