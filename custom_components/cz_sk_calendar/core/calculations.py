@@ -217,18 +217,26 @@ def calc_christmas_vacation(school_year: int, country: str) -> tuple[date, date,
 
 
 def calc_semester_vacation(school_year: int, country: str) -> tuple[date, date, str]:
-    """Calculate semester (half-term) vacation."""
-    feb_1 = date(school_year + 1, 2, 1)
+    """Calculate semester (half-term) vacation.
 
+    CZ: Friday between January 29 and February 4 (first Friday after Jan 28)
+    SK: First Monday of February
+    """
     if country == COUNTRY_CZ:
-        days_until_friday = (4 - feb_1.weekday()) % 7
-        first_friday = feb_1 + timedelta(days=days_until_friday)
-        return first_friday, first_friday, "Pololetní prázdniny"
+        # Pololetní prázdniny jsou pátek mezi 29. lednem a 4. únorem
+        # (první pátek po 28. lednu)
+        jan_29 = date(school_year + 1, 1, 29)
+        # Find Friday on or after Jan 29
+        days_until_friday = (4 - jan_29.weekday()) % 7
+        semester_friday = jan_29 + timedelta(days=days_until_friday)
+        return semester_friday, semester_friday, "Pololetní prázdniny"
     else:
-        days_until_monday = (7 - feb_1.weekday()) % 7
-        if feb_1.weekday() == 0:
+        # SK: First Monday of February
+        feb_1 = date(school_year + 1, 2, 1)
+        if feb_1.weekday() == 0:  # Monday
             first_monday = feb_1
         else:
+            days_until_monday = (7 - feb_1.weekday()) % 7
             if days_until_monday == 0:
                 days_until_monday = 7
             first_monday = feb_1 + timedelta(days=days_until_monday)
