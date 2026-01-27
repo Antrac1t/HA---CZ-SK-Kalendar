@@ -1,45 +1,34 @@
 """Sensor platform for CZ/SK School & Work Calendar."""
 from __future__ import annotations
 
-from datetime import date, timedelta
-import logging
-from typing import Any
 import calendar
+from datetime import date, timedelta
+from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_time_change
 
-from .const import (
-    CONF_COUNTRY,
-    CONF_REGION,
-    CZ_REGIONS,
-    DOMAIN,
-    SENSOR_TYPES,
-    SK_REGIONS,
-    COUNTRY_CZ,
-)
-from .holidays import (
+from .const import CONF_COUNTRY, CONF_REGION, COUNTRY_CZ
+from .entity import CZSKEntity
+from .core import (
     get_all_holidays,
-    get_holiday_name,
-    get_next_holiday,
-    is_holiday,
-    is_workday,
-)
-from .vacations import (
     get_all_vacations,
+    get_holiday_name,
+    get_nameday,
+    get_namedays_in_week,
+    get_next_holiday,
     get_next_vacation,
     get_school_year,
+    get_special_day_name,
+    get_next_special_day,
     get_vacation_name,
+    is_holiday,
     is_school_day,
     is_vacation,
+    is_workday,
 )
-from .namedays import get_nameday, get_next_nameday, get_namedays_in_week
-from .special_days import get_special_day_name, get_next_special_day
-
-_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -52,415 +41,237 @@ async def async_setup_entry(
     region = config_entry.data[CONF_REGION]
 
     sensors = [
-        CZSKWorkdaySensor(config_entry, country, region),
-        CZSKSchoolDaySensor(config_entry, country, region),
-        CZSKHolidaySensor(config_entry, country, region),
-        CZSKVacationSensor(config_entry, country, region),
-        CZSKHolidayNameSensor(config_entry, country, region),
-        CZSKVacationNameSensor(config_entry, country, region),
-        CZSKNextHolidaySensor(config_entry, country, region),
-        CZSKNextVacationSensor(config_entry, country, region),
-        CZSKDaysToHolidaySensor(config_entry, country, region),
-        CZSKDaysToVacationSensor(config_entry, country, region),
-        # New sensors
+        # Boolean state sensors (kept for backwards compatibility)
+        CZSKBooleanSensor(
+            config_entry, "workday",
+            "Pracovní den" if country == COUNTRY_CZ else "Pracovný deň",
+            "mdi:briefcase",
+            lambda e: is_workday(e.today, e._country),
+        ),
+        CZSKBooleanSensor(
+            config_entry, "school_day",
+            "Školní den" if country == COUNTRY_CZ else "Školský deň",
+            "mdi:school",
+            lambda e: is_school_day(e.today, e._country, e._region),
+        ),
+        CZSKBooleanSensor(
+            config_entry, "holiday",
+            "Svátek" if country == COUNTRY_CZ else "Sviatok",
+            "mdi:party-popper",
+            lambda e: is_holiday(e.today, e._country),
+        ),
+        CZSKBooleanSensor(
+            config_entry, "vacation",
+            "Prázdniny" if country == COUNTRY_CZ else "Prázdniny",
+            "mdi:beach",
+            lambda e: is_vacation(e.today, e._country, e._region),
+        ),
+        # Name sensors
+        CZSKNameSensor(
+            config_entry, "holiday_name",
+            "Název svátku" if country == COUNTRY_CZ else "Názov sviatku",
+            "mdi:calendar-star",
+            lambda e: get_holiday_name(e.today, e._country),
+        ),
+        CZSKNameSensor(
+            config_entry, "vacation_name",
+            "Název prázdnin" if country == COUNTRY_CZ else "Názov prázdnin",
+            "mdi:calendar-text",
+            lambda e: get_vacation_name(e.today, e._country, e._region),
+        ),
+        CZSKNameSensor(
+            config_entry, "special_day",
+            "Významný den" if country == COUNTRY_CZ else "Významný deň",
+            "mdi:star",
+            lambda e: get_special_day_name(e.today, e._country),
+        ),
+        CZSKNameSensor(
+            config_entry, "nameday",
+            "Jmeniny" if country == COUNTRY_CZ else "Meniny",
+            "mdi:cake-variant",
+            lambda e: get_nameday(e.today, e._country),
+        ),
+        # Countdown sensors
+        CZSKCountdownSensor(config_entry, country),
+        # School year sensor
         CZSKSchoolYearSensor(config_entry, country, region),
-        CZSKNamedaySensor(config_entry, country, region),
-        CZSKSpecialDaySensor(config_entry, country, region),
-        CZSKWorkdaysInMonthSensor(config_entry, country, region),
+        # Statistics sensors
+        CZSKWorkdaysInMonthSensor(config_entry, country),
         CZSKSchoolDaysInMonthSensor(config_entry, country, region),
-        CZSKVacationDaysRemainingSensor(config_entry, country, region),
-        CZSKWorkdaysToWeekendSensor(config_entry, country, region),
-        CZSKSchoolDaysToVacationSensor(config_entry, country, region),
+        CZSKVacationProgressSensor(config_entry, country, region),
     ]
 
     async_add_entities(sensors, True)
 
 
-class CZSKBaseSensor(SensorEntity):
-    """Base class for CZ/SK Calendar sensors."""
+# ============================================================================
+# Base sensor classes
+# ============================================================================
 
-    _attr_has_entity_name = True
+class CZSKBaseSensor(CZSKEntity, SensorEntity):
+    """Base class for CZ/SK Calendar sensors."""
+    pass
+
+
+class CZSKBooleanSensor(CZSKBaseSensor):
+    """Sensor that returns True/False based on a condition."""
 
     def __init__(
         self,
         config_entry: ConfigEntry,
-        country: str,
-        region: str,
-        sensor_type: str,
+        entity_type: str,
+        name: str,
+        icon: str,
+        value_fn,
     ) -> None:
-        """Initialize the sensor."""
-        self._config_entry = config_entry
-        self._country = country
-        self._region = region
-        self._sensor_type = sensor_type
-
-        region_name = (
-            CZ_REGIONS.get(region, region)
-            if country == COUNTRY_CZ
-            else SK_REGIONS.get(region, region)
-        )
-
-        self._attr_unique_id = f"{config_entry.entry_id}_{sensor_type}"
-        self._attr_name = SENSOR_TYPES[sensor_type]["name"]
-        self._attr_icon = SENSOR_TYPES[sensor_type]["icon"]
-        self._attr_extra_state_attributes = {
-            "country": country,
-            "region": region,
-            "region_name": region_name,
-        }
-
-    @property
-    def device_info(self):
-        """Return device info."""
-        return {
-            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
-            "name": f"CZ/SK Calendar ({self._config_entry.title})",
-            "manufacturer": "CZ/SK Calendar",
-            "model": f"{self._country} Calendar",
-        }
-
-    async def async_added_to_hass(self) -> None:
-        """Register callbacks when entity is added."""
-        # Update at midnight
-        self.async_on_remove(
-            async_track_time_change(
-                self.hass, self._async_update_at_midnight, hour=0, minute=0, second=0
-            )
-        )
-
-    @callback
-    def _async_update_at_midnight(self, now=None) -> None:
-        """Update the sensor at midnight."""
-        self.async_schedule_update_ha_state(True)
-
-
-class CZSKWorkdaySensor(CZSKBaseSensor):
-    """Sensor for workday detection."""
-
-    def __init__(
-        self, config_entry: ConfigEntry, country: str, region: str
-    ) -> None:
-        """Initialize the workday sensor."""
-        super().__init__(config_entry, country, region, "workday")
+        """Initialize the boolean sensor."""
+        super().__init__(config_entry, entity_type, name, icon)
+        self._value_fn = value_fn
 
     @property
     def native_value(self) -> bool:
-        """Return True if today is a workday."""
-        return is_workday(date.today(), self._country)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attributes."""
-        today = date.today()
-        tomorrow = today + timedelta(days=1)
-        attrs = super().extra_state_attributes.copy()
-        attrs["tomorrow_is_workday"] = is_workday(tomorrow, self._country)
-        return attrs
+        """Return the sensor value."""
+        return self._value_fn(self)
 
 
-class CZSKSchoolDaySensor(CZSKBaseSensor):
-    """Sensor for school day detection."""
+class CZSKNameSensor(CZSKBaseSensor):
+    """Sensor that returns a name (holiday, vacation, etc.)."""
 
     def __init__(
-        self, config_entry: ConfigEntry, country: str, region: str
+        self,
+        config_entry: ConfigEntry,
+        entity_type: str,
+        name: str,
+        icon: str,
+        value_fn,
     ) -> None:
-        """Initialize the school day sensor."""
-        super().__init__(config_entry, country, region, "school_day")
-
-    @property
-    def native_value(self) -> bool:
-        """Return True if today is a school day."""
-        return is_school_day(date.today(), self._country, self._region)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attributes."""
-        today = date.today()
-        tomorrow = today + timedelta(days=1)
-        attrs = super().extra_state_attributes.copy()
-        attrs["tomorrow_is_school_day"] = is_school_day(
-            tomorrow, self._country, self._region
-        )
-        return attrs
-
-
-class CZSKHolidaySensor(CZSKBaseSensor):
-    """Sensor for holiday detection."""
-
-    def __init__(
-        self, config_entry: ConfigEntry, country: str, region: str
-    ) -> None:
-        """Initialize the holiday sensor."""
-        super().__init__(config_entry, country, region, "holiday")
-
-    @property
-    def native_value(self) -> bool:
-        """Return True if today is a holiday."""
-        return is_holiday(date.today(), self._country)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attributes."""
-        today = date.today()
-        attrs = super().extra_state_attributes.copy()
-        attrs["holiday_name"] = get_holiday_name(today, self._country)
-
-        # List all holidays for current year
-        holidays = get_all_holidays(today.year, self._country)
-        attrs["holidays_this_year"] = {
-            d.isoformat(): name for d, name in sorted(holidays.items())
-        }
-        return attrs
-
-
-class CZSKVacationSensor(CZSKBaseSensor):
-    """Sensor for vacation detection."""
-
-    def __init__(
-        self, config_entry: ConfigEntry, country: str, region: str
-    ) -> None:
-        """Initialize the vacation sensor."""
-        super().__init__(config_entry, country, region, "vacation")
-
-    @property
-    def native_value(self) -> bool:
-        """Return True if today is during vacation."""
-        return is_vacation(date.today(), self._country, self._region)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attributes."""
-        today = date.today()
-        attrs = super().extra_state_attributes.copy()
-        attrs["vacation_name"] = get_vacation_name(today, self._country, self._region)
-        return attrs
-
-
-class CZSKHolidayNameSensor(CZSKBaseSensor):
-    """Sensor for current holiday name."""
-
-    def __init__(
-        self, config_entry: ConfigEntry, country: str, region: str
-    ) -> None:
-        """Initialize the holiday name sensor."""
-        super().__init__(config_entry, country, region, "holiday_name")
+        """Initialize the name sensor."""
+        super().__init__(config_entry, entity_type, name, icon)
+        self._value_fn = value_fn
 
     @property
     def native_value(self) -> str | None:
-        """Return the name of today's holiday, or None."""
-        return get_holiday_name(date.today(), self._country)
+        """Return the sensor value."""
+        return self._value_fn(self)
 
 
-class CZSKVacationNameSensor(CZSKBaseSensor):
-    """Sensor for current vacation name."""
+# ============================================================================
+# Specialized sensors
+# ============================================================================
 
-    def __init__(
-        self, config_entry: ConfigEntry, country: str, region: str
-    ) -> None:
-        """Initialize the vacation name sensor."""
-        super().__init__(config_entry, country, region, "vacation_name")
+class CZSKCountdownSensor(CZSKBaseSensor):
+    """Combined countdown sensor for holidays and vacations."""
 
-    @property
-    def native_value(self) -> str | None:
-        """Return the name of current vacation, or None."""
-        return get_vacation_name(date.today(), self._country, self._region)
+    _attr_native_unit_of_measurement = "days"
 
-
-class CZSKNextHolidaySensor(CZSKBaseSensor):
-    """Sensor for next holiday."""
-
-    def __init__(
-        self, config_entry: ConfigEntry, country: str, region: str
-    ) -> None:
-        """Initialize the next holiday sensor."""
-        super().__init__(config_entry, country, region, "next_holiday")
-
-    @property
-    def native_value(self) -> str:
-        """Return the name of the next holiday."""
-        today = date.today()
-        next_date, name = get_next_holiday(today + timedelta(days=1), self._country)
-        return name
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attributes."""
-        today = date.today()
-        next_date, name = get_next_holiday(today + timedelta(days=1), self._country)
-        attrs = super().extra_state_attributes.copy()
-        attrs["date"] = next_date.isoformat()
-        attrs["days_until"] = (next_date - today).days
-        return attrs
-
-
-class CZSKNextVacationSensor(CZSKBaseSensor):
-    """Sensor for next vacation."""
-
-    def __init__(
-        self, config_entry: ConfigEntry, country: str, region: str
-    ) -> None:
-        """Initialize the next vacation sensor."""
-        super().__init__(config_entry, country, region, "next_vacation")
-
-    @property
-    def native_value(self) -> str:
-        """Return the name of the next vacation."""
-        today = date.today()
-        # If currently on vacation, get the next one after today
-        if is_vacation(today, self._country, self._region):
-            start, name, end = get_next_vacation(
-                today + timedelta(days=1), self._country, self._region
-            )
-        else:
-            start, name, end = get_next_vacation(today, self._country, self._region)
-        return name
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attributes."""
-        today = date.today()
-        if is_vacation(today, self._country, self._region):
-            start, name, end = get_next_vacation(
-                today + timedelta(days=1), self._country, self._region
-            )
-        else:
-            start, name, end = get_next_vacation(today, self._country, self._region)
-        attrs = super().extra_state_attributes.copy()
-        attrs["start_date"] = start.isoformat()
-        attrs["end_date"] = end.isoformat()
-        attrs["days_until"] = (start - today).days
-        attrs["duration_days"] = (end - start).days + 1
-        return attrs
-
-
-class CZSKDaysToHolidaySensor(CZSKBaseSensor):
-    """Sensor for days until next holiday."""
-
-    def __init__(
-        self, config_entry: ConfigEntry, country: str, region: str
-    ) -> None:
-        """Initialize the days to holiday sensor."""
-        super().__init__(config_entry, country, region, "days_to_holiday")
+    def __init__(self, config_entry: ConfigEntry, country: str) -> None:
+        """Initialize the countdown sensor."""
+        name = "Odpočet" if country == COUNTRY_CZ else "Odpočet"
+        super().__init__(config_entry, "countdown", name, "mdi:timer-sand")
 
     @property
     def native_value(self) -> int:
-        """Return days until next holiday."""
-        today = date.today()
+        """Return days to next event (holiday or vacation)."""
+        today = self.today
+
+        # Days to next holiday
         if is_holiday(today, self._country):
-            return 0
-        next_date, _ = get_next_holiday(today + timedelta(days=1), self._country)
-        return (next_date - today).days
+            days_holiday = 0
+        else:
+            next_h, _ = get_next_holiday(today + timedelta(days=1), self._country)
+            days_holiday = (next_h - today).days
 
-    @property
-    def native_unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
-        return "days"
-
-
-class CZSKDaysToVacationSensor(CZSKBaseSensor):
-    """Sensor for days until next vacation."""
-
-    def __init__(
-        self, config_entry: ConfigEntry, country: str, region: str
-    ) -> None:
-        """Initialize the days to vacation sensor."""
-        super().__init__(config_entry, country, region, "days_to_vacation")
-
-    @property
-    def native_value(self) -> int:
-        """Return days until next vacation."""
-        today = date.today()
+        # Days to next vacation
         if is_vacation(today, self._country, self._region):
-            return 0
-        start, _, _ = get_next_vacation(today, self._country, self._region)
-        return (start - today).days
+            days_vacation = 0
+        else:
+            next_v, _, _ = get_next_vacation(today, self._country, self._region)
+            days_vacation = (next_v - today).days
+
+        return min(days_holiday, days_vacation)
 
     @property
-    def native_unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
-        return "days"
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        attrs = super().extra_state_attributes.copy()
+        today = self.today
+
+        # Next holiday
+        if is_holiday(today, self._country):
+            attrs["days_to_holiday"] = 0
+            attrs["holiday_name"] = get_holiday_name(today, self._country)
+        else:
+            next_h, name_h = get_next_holiday(today + timedelta(days=1), self._country)
+            attrs["days_to_holiday"] = (next_h - today).days
+            attrs["next_holiday"] = name_h
+            attrs["next_holiday_date"] = next_h.isoformat()
+
+        # Next vacation
+        if is_vacation(today, self._country, self._region):
+            attrs["days_to_vacation"] = 0
+            attrs["vacation_name"] = get_vacation_name(today, self._country, self._region)
+        else:
+            next_v, name_v, end_v = get_next_vacation(today, self._country, self._region)
+            attrs["days_to_vacation"] = (next_v - today).days
+            attrs["next_vacation"] = name_v
+            attrs["next_vacation_start"] = next_v.isoformat()
+            attrs["next_vacation_end"] = end_v.isoformat()
+
+        # Next special day
+        next_s, name_s = get_next_special_day(today + timedelta(days=1), self._country)
+        attrs["days_to_special_day"] = (next_s - today).days
+        attrs["next_special_day"] = name_s
+        attrs["next_special_day_date"] = next_s.isoformat()
+
+        # Tomorrow's nameday
+        tomorrow = today + timedelta(days=1)
+        attrs["tomorrow_nameday"] = get_nameday(tomorrow, self._country)
+
+        return attrs
 
 
-class CZSKSchoolYearSensor(SensorEntity):
+class CZSKSchoolYearSensor(CZSKBaseSensor):
     """Sensor for school year information."""
-
-    _attr_has_entity_name = True
-    _attr_icon = "mdi:school"
 
     def __init__(
         self, config_entry: ConfigEntry, country: str, region: str
     ) -> None:
         """Initialize the school year sensor."""
-        self._config_entry = config_entry
-        self._country = country
-        self._region = region
-
-        region_name = (
-            CZ_REGIONS.get(region, region)
-            if country == COUNTRY_CZ
-            else SK_REGIONS.get(region, region)
-        )
-
-        self._attr_unique_id = f"{config_entry.entry_id}_school_year"
-        self._attr_name = "Školní rok" if country == COUNTRY_CZ else "Školský rok"
-        self._attr_extra_state_attributes = {
-            "country": country,
-            "region": region,
-            "region_name": region_name,
-        }
-
-    @property
-    def device_info(self):
-        """Return device info."""
-        return {
-            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
-            "name": f"CZ/SK Calendar ({self._config_entry.title})",
-            "manufacturer": "CZ/SK Calendar",
-            "model": f"{self._country} Calendar",
-        }
+        name = "Školní rok" if country == COUNTRY_CZ else "Školský rok"
+        super().__init__(config_entry, "school_year", name, "mdi:school")
 
     @property
     def native_value(self) -> str:
         """Return the current school year."""
-        school_year = get_school_year(date.today())
+        school_year = get_school_year(self.today)
         return f"{school_year}/{school_year + 1}"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
-        today = date.today()
+        attrs = super().extra_state_attributes.copy()
+        today = self.today
         school_year = get_school_year(today)
-        attrs = dict(self._attr_extra_state_attributes)
 
-        # School year start and end
-        # CZ: September 1 - June 30
-        # SK: September 2 - June 30
+        # School year dates
         start_day = 2 if self._country == "SK" else 1
         start_date = date(school_year, 9, start_day)
         end_date = date(school_year + 1, 6, 30)
 
         attrs["start_date"] = start_date.isoformat()
         attrs["end_date"] = end_date.isoformat()
-        attrs["start_year"] = school_year
-        attrs["end_year"] = school_year + 1
 
-        # Days in school year
+        # Progress
         total_days = (end_date - start_date).days + 1
-        elapsed_days = (today - start_date).days
-        remaining_days = (end_date - today).days
+        elapsed = max(0, (today - start_date).days)
+        remaining = max(0, (end_date - today).days)
 
         attrs["total_days"] = total_days
-        attrs["elapsed_days"] = max(0, elapsed_days)
-        attrs["remaining_days"] = max(0, remaining_days)
+        attrs["elapsed_days"] = elapsed
+        attrs["remaining_days"] = remaining
+        attrs["progress_percent"] = round(min(100, (elapsed / total_days) * 100), 1)
 
-        # Progress percentage
-        if total_days > 0 and elapsed_days >= 0:
-            progress = min(100, (elapsed_days / total_days) * 100)
-            attrs["progress_percent"] = round(progress, 1)
-        else:
-            attrs["progress_percent"] = 0
-
-        # Get all vacations for this school year
+        # Vacations list
         vacations = get_all_vacations(school_year, self._country, self._region)
         attrs["vacations"] = [
             {"name": name, "start": start.isoformat(), "end": end.isoformat()}
@@ -469,332 +280,115 @@ class CZSKSchoolYearSensor(SensorEntity):
 
         return attrs
 
-    async def async_added_to_hass(self) -> None:
-        """Register callbacks when entity is added."""
-        self.async_on_remove(
-            async_track_time_change(
-                self.hass, self._async_update_at_midnight, hour=0, minute=0, second=0
-            )
-        )
 
-    @callback
-    def _async_update_at_midnight(self, now=None) -> None:
-        """Update the sensor at midnight."""
-        self.async_schedule_update_ha_state(True)
+class CZSKWorkdaysInMonthSensor(CZSKBaseSensor):
+    """Sensor for workdays in current month."""
 
-
-class CZSKNamedaySensor(SensorEntity):
-    """Sensor for today's name day."""
-
-    _attr_has_entity_name = True
-    _attr_icon = "mdi:cake-variant"
-
-    def __init__(
-        self, config_entry: ConfigEntry, country: str, region: str
-    ) -> None:
-        """Initialize the name day sensor."""
-        self._config_entry = config_entry
-        self._country = country
-        self._region = region
-
-        self._attr_unique_id = f"{config_entry.entry_id}_nameday"
-        self._attr_name = "Jmeniny" if country == COUNTRY_CZ else "Meniny"
-
-    @property
-    def device_info(self):
-        """Return device info."""
-        return {
-            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
-            "name": f"CZ/SK Calendar ({self._config_entry.title})",
-            "manufacturer": "CZ/SK Calendar",
-            "model": f"{self._country} Calendar",
-        }
-
-    @property
-    def native_value(self) -> str | None:
-        """Return today's name day."""
-        return get_nameday(date.today(), self._country)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attributes."""
-        today = date.today()
-        tomorrow = today + timedelta(days=1)
-        attrs = {}
-
-        # Tomorrow's name day
-        attrs["tomorrow"] = get_nameday(tomorrow, self._country)
-
-        # This week's name days
-        week_namedays = get_namedays_in_week(today, self._country)
-        attrs["this_week"] = {
-            d.isoformat(): name for d, name in sorted(week_namedays.items())
-        }
-
-        return attrs
-
-    async def async_added_to_hass(self) -> None:
-        """Register callbacks when entity is added."""
-        self.async_on_remove(
-            async_track_time_change(
-                self.hass, self._async_update_at_midnight, hour=0, minute=0, second=0
-            )
-        )
-
-    @callback
-    def _async_update_at_midnight(self, now=None) -> None:
-        """Update the sensor at midnight."""
-        self.async_schedule_update_ha_state(True)
-
-
-class CZSKSpecialDaySensor(SensorEntity):
-    """Sensor for today's special day."""
-
-    _attr_has_entity_name = True
-    _attr_icon = "mdi:star"
-
-    def __init__(
-        self, config_entry: ConfigEntry, country: str, region: str
-    ) -> None:
-        """Initialize the special day sensor."""
-        self._config_entry = config_entry
-        self._country = country
-        self._region = region
-
-        self._attr_unique_id = f"{config_entry.entry_id}_special_day"
-        self._attr_name = "Významný den" if country == COUNTRY_CZ else "Významný deň"
-
-    @property
-    def device_info(self):
-        """Return device info."""
-        return {
-            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
-            "name": f"CZ/SK Calendar ({self._config_entry.title})",
-            "manufacturer": "CZ/SK Calendar",
-            "model": f"{self._country} Calendar",
-        }
-
-    @property
-    def native_value(self) -> str | None:
-        """Return today's special day name."""
-        return get_special_day_name(date.today(), self._country)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attributes."""
-        today = date.today()
-        attrs = {}
-
-        # Next special day
-        next_date, next_name = get_next_special_day(today + timedelta(days=1), self._country)
-        attrs["next_special_day"] = next_name
-        attrs["next_special_day_date"] = next_date.isoformat()
-        attrs["days_to_next"] = (next_date - today).days
-
-        return attrs
-
-    async def async_added_to_hass(self) -> None:
-        """Register callbacks when entity is added."""
-        self.async_on_remove(
-            async_track_time_change(
-                self.hass, self._async_update_at_midnight, hour=0, minute=0, second=0
-            )
-        )
-
-    @callback
-    def _async_update_at_midnight(self, now=None) -> None:
-        """Update the sensor at midnight."""
-        self.async_schedule_update_ha_state(True)
-
-
-class CZSKWorkdaysInMonthSensor(SensorEntity):
-    """Sensor for workdays remaining in current month."""
-
-    _attr_has_entity_name = True
-    _attr_icon = "mdi:calendar-month"
     _attr_native_unit_of_measurement = "days"
 
-    def __init__(
-        self, config_entry: ConfigEntry, country: str, region: str
-    ) -> None:
-        """Initialize the workdays in month sensor."""
-        self._config_entry = config_entry
-        self._country = country
-        self._region = region
-
-        self._attr_unique_id = f"{config_entry.entry_id}_workdays_in_month"
-        self._attr_name = "Pracovní dny v měsíci" if country == COUNTRY_CZ else "Pracovné dni v mesiaci"
-
-    @property
-    def device_info(self):
-        """Return device info."""
-        return {
-            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
-            "name": f"CZ/SK Calendar ({self._config_entry.title})",
-            "manufacturer": "CZ/SK Calendar",
-            "model": f"{self._country} Calendar",
-        }
+    def __init__(self, config_entry: ConfigEntry, country: str) -> None:
+        """Initialize the sensor."""
+        name = "Pracovní dny v měsíci" if country == COUNTRY_CZ else "Pracovné dni v mesiaci"
+        super().__init__(config_entry, "workdays_in_month", name, "mdi:calendar-month")
 
     @property
     def native_value(self) -> int:
         """Return remaining workdays in current month."""
-        today = date.today()
+        today = self.today
         _, last_day = calendar.monthrange(today.year, today.month)
 
-        remaining = 0
+        count = 0
         for day in range(today.day, last_day + 1):
-            check_date = date(today.year, today.month, day)
-            if is_workday(check_date, self._country):
-                remaining += 1
-
-        return remaining
+            if is_workday(date(today.year, today.month, day), self._country):
+                count += 1
+        return count
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
-        today = date.today()
+        attrs = super().extra_state_attributes.copy()
+        today = self.today
         _, last_day = calendar.monthrange(today.year, today.month)
 
-        total_workdays = 0
-        elapsed_workdays = 0
-        for day in range(1, last_day + 1):
-            check_date = date(today.year, today.month, day)
-            if is_workday(check_date, self._country):
-                total_workdays += 1
-                if day < today.day:
-                    elapsed_workdays += 1
-
-        return {
-            "total_workdays_in_month": total_workdays,
-            "elapsed_workdays": elapsed_workdays,
-            "month": today.strftime("%B"),
-            "year": today.year,
-        }
-
-    async def async_added_to_hass(self) -> None:
-        """Register callbacks when entity is added."""
-        self.async_on_remove(
-            async_track_time_change(
-                self.hass, self._async_update_at_midnight, hour=0, minute=0, second=0
-            )
+        total = sum(
+            1 for d in range(1, last_day + 1)
+            if is_workday(date(today.year, today.month, d), self._country)
+        )
+        elapsed = sum(
+            1 for d in range(1, today.day)
+            if is_workday(date(today.year, today.month, d), self._country)
         )
 
-    @callback
-    def _async_update_at_midnight(self, now=None) -> None:
-        """Update the sensor at midnight."""
-        self.async_schedule_update_ha_state(True)
+        attrs["total_in_month"] = total
+        attrs["elapsed"] = elapsed
+        attrs["month"] = today.strftime("%B")
+
+        return attrs
 
 
-class CZSKSchoolDaysInMonthSensor(SensorEntity):
-    """Sensor for school days remaining in current month."""
+class CZSKSchoolDaysInMonthSensor(CZSKBaseSensor):
+    """Sensor for school days in current month."""
 
-    _attr_has_entity_name = True
-    _attr_icon = "mdi:calendar-month"
     _attr_native_unit_of_measurement = "days"
 
     def __init__(
         self, config_entry: ConfigEntry, country: str, region: str
     ) -> None:
-        """Initialize the school days in month sensor."""
-        self._config_entry = config_entry
-        self._country = country
-        self._region = region
-
-        self._attr_unique_id = f"{config_entry.entry_id}_school_days_in_month"
-        self._attr_name = "Školní dny v měsíci" if country == COUNTRY_CZ else "Školské dni v mesiaci"
-
-    @property
-    def device_info(self):
-        """Return device info."""
-        return {
-            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
-            "name": f"CZ/SK Calendar ({self._config_entry.title})",
-            "manufacturer": "CZ/SK Calendar",
-            "model": f"{self._country} Calendar",
-        }
+        """Initialize the sensor."""
+        name = "Školní dny v měsíci" if country == COUNTRY_CZ else "Školské dni v mesiaci"
+        super().__init__(config_entry, "school_days_in_month", name, "mdi:calendar-month")
 
     @property
     def native_value(self) -> int:
         """Return remaining school days in current month."""
-        today = date.today()
+        today = self.today
         _, last_day = calendar.monthrange(today.year, today.month)
 
-        remaining = 0
+        count = 0
         for day in range(today.day, last_day + 1):
-            check_date = date(today.year, today.month, day)
-            if is_school_day(check_date, self._country, self._region):
-                remaining += 1
-
-        return remaining
+            if is_school_day(date(today.year, today.month, day), self._country, self._region):
+                count += 1
+        return count
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
-        today = date.today()
+        attrs = super().extra_state_attributes.copy()
+        today = self.today
         _, last_day = calendar.monthrange(today.year, today.month)
 
-        total_school_days = 0
-        elapsed_school_days = 0
-        for day in range(1, last_day + 1):
-            check_date = date(today.year, today.month, day)
-            if is_school_day(check_date, self._country, self._region):
-                total_school_days += 1
-                if day < today.day:
-                    elapsed_school_days += 1
-
-        return {
-            "total_school_days_in_month": total_school_days,
-            "elapsed_school_days": elapsed_school_days,
-            "month": today.strftime("%B"),
-            "year": today.year,
-        }
-
-    async def async_added_to_hass(self) -> None:
-        """Register callbacks when entity is added."""
-        self.async_on_remove(
-            async_track_time_change(
-                self.hass, self._async_update_at_midnight, hour=0, minute=0, second=0
-            )
+        total = sum(
+            1 for d in range(1, last_day + 1)
+            if is_school_day(date(today.year, today.month, d), self._country, self._region)
+        )
+        elapsed = sum(
+            1 for d in range(1, today.day)
+            if is_school_day(date(today.year, today.month, d), self._country, self._region)
         )
 
-    @callback
-    def _async_update_at_midnight(self, now=None) -> None:
-        """Update the sensor at midnight."""
-        self.async_schedule_update_ha_state(True)
+        attrs["total_in_month"] = total
+        attrs["elapsed"] = elapsed
+        attrs["month"] = today.strftime("%B")
+
+        return attrs
 
 
-class CZSKVacationDaysRemainingSensor(SensorEntity):
-    """Sensor for vacation days remaining (if on vacation)."""
+class CZSKVacationProgressSensor(CZSKBaseSensor):
+    """Sensor for vacation progress (when on vacation)."""
 
-    _attr_has_entity_name = True
-    _attr_icon = "mdi:beach"
     _attr_native_unit_of_measurement = "days"
 
     def __init__(
         self, config_entry: ConfigEntry, country: str, region: str
     ) -> None:
-        """Initialize the vacation days remaining sensor."""
-        self._config_entry = config_entry
-        self._country = country
-        self._region = region
-
-        self._attr_unique_id = f"{config_entry.entry_id}_vacation_days_remaining"
-        self._attr_name = "Zbývá dní prázdnin" if country == COUNTRY_CZ else "Zostáva dní prázdnin"
-
-    @property
-    def device_info(self):
-        """Return device info."""
-        return {
-            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
-            "name": f"CZ/SK Calendar ({self._config_entry.title})",
-            "manufacturer": "CZ/SK Calendar",
-            "model": f"{self._country} Calendar",
-        }
+        """Initialize the sensor."""
+        name = "Zbývá dní prázdnin" if country == COUNTRY_CZ else "Zostáva dní prázdnin"
+        super().__init__(config_entry, "vacation_remaining", name, "mdi:beach")
 
     @property
     def native_value(self) -> int | None:
-        """Return remaining vacation days or None if not on vacation."""
-        today = date.today()
+        """Return remaining vacation days or None."""
+        today = self.today
         vacation_name = get_vacation_name(today, self._country, self._region)
 
         if not vacation_name:
@@ -810,203 +404,33 @@ class CZSKVacationDaysRemainingSensor(SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional attributes."""
-        today = date.today()
+        attrs = super().extra_state_attributes.copy()
+        today = self.today
         vacation_name = get_vacation_name(today, self._country, self._region)
 
-        if not vacation_name:
-            return {"on_vacation": False}
+        attrs["on_vacation"] = vacation_name is not None
 
-        # Find start and end of current vacation
-        start = today
-        while get_vacation_name(start - timedelta(days=1), self._country, self._region) == vacation_name:
-            start -= timedelta(days=1)
+        if vacation_name:
+            attrs["vacation_name"] = vacation_name
 
-        end = today
-        while get_vacation_name(end, self._country, self._region) == vacation_name:
-            end += timedelta(days=1)
-        end -= timedelta(days=1)
+            # Find start
+            start = today
+            while get_vacation_name(start - timedelta(days=1), self._country, self._region) == vacation_name:
+                start -= timedelta(days=1)
 
-        total_days = (end - start).days + 1
-        elapsed_days = (today - start).days
+            # Find end
+            end = today
+            while get_vacation_name(end, self._country, self._region) == vacation_name:
+                end += timedelta(days=1)
+            end -= timedelta(days=1)
 
-        return {
-            "on_vacation": True,
-            "vacation_name": vacation_name,
-            "start_date": start.isoformat(),
-            "end_date": end.isoformat(),
-            "total_days": total_days,
-            "elapsed_days": elapsed_days,
-            "progress_percent": round((elapsed_days / total_days) * 100, 1) if total_days > 0 else 0,
-        }
+            total = (end - start).days + 1
+            elapsed = (today - start).days
 
-    async def async_added_to_hass(self) -> None:
-        """Register callbacks when entity is added."""
-        self.async_on_remove(
-            async_track_time_change(
-                self.hass, self._async_update_at_midnight, hour=0, minute=0, second=0
-            )
-        )
+            attrs["start_date"] = start.isoformat()
+            attrs["end_date"] = end.isoformat()
+            attrs["total_days"] = total
+            attrs["elapsed_days"] = elapsed
+            attrs["progress_percent"] = round((elapsed / total) * 100, 1) if total > 0 else 0
 
-    @callback
-    def _async_update_at_midnight(self, now=None) -> None:
-        """Update the sensor at midnight."""
-        self.async_schedule_update_ha_state(True)
-
-
-class CZSKWorkdaysToWeekendSensor(SensorEntity):
-    """Sensor for workdays until weekend."""
-
-    _attr_has_entity_name = True
-    _attr_icon = "mdi:calendar-weekend"
-    _attr_native_unit_of_measurement = "days"
-
-    def __init__(
-        self, config_entry: ConfigEntry, country: str, region: str
-    ) -> None:
-        """Initialize the workdays to weekend sensor."""
-        self._config_entry = config_entry
-        self._country = country
-        self._region = region
-
-        self._attr_unique_id = f"{config_entry.entry_id}_workdays_to_weekend"
-        self._attr_name = "Pracovní dny do víkendu" if country == COUNTRY_CZ else "Pracovné dni do víkendu"
-
-    @property
-    def device_info(self):
-        """Return device info."""
-        return {
-            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
-            "name": f"CZ/SK Calendar ({self._config_entry.title})",
-            "manufacturer": "CZ/SK Calendar",
-            "model": f"{self._country} Calendar",
-        }
-
-    @property
-    def native_value(self) -> int:
-        """Return workdays until weekend (Saturday)."""
-        today = date.today()
-
-        # If it's weekend, return 0
-        if today.weekday() >= 5:
-            return 0
-
-        # Count workdays until Saturday
-        count = 0
-        current = today
-        while current.weekday() < 5:  # While not Saturday
-            if is_workday(current, self._country):
-                count += 1
-            current += timedelta(days=1)
-
-        return count
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attributes."""
-        today = date.today()
-
-        # Find next Saturday
-        days_to_saturday = (5 - today.weekday()) % 7
-        if days_to_saturday == 0 and today.weekday() != 5:
-            days_to_saturday = 7
-        next_saturday = today + timedelta(days=days_to_saturday)
-
-        return {
-            "next_weekend": next_saturday.isoformat(),
-            "is_weekend": today.weekday() >= 5,
-            "day_of_week": today.strftime("%A"),
-        }
-
-    async def async_added_to_hass(self) -> None:
-        """Register callbacks when entity is added."""
-        self.async_on_remove(
-            async_track_time_change(
-                self.hass, self._async_update_at_midnight, hour=0, minute=0, second=0
-            )
-        )
-
-    @callback
-    def _async_update_at_midnight(self, now=None) -> None:
-        """Update the sensor at midnight."""
-        self.async_schedule_update_ha_state(True)
-
-
-class CZSKSchoolDaysToVacationSensor(SensorEntity):
-    """Sensor for school days until next vacation."""
-
-    _attr_has_entity_name = True
-    _attr_icon = "mdi:school"
-    _attr_native_unit_of_measurement = "days"
-
-    def __init__(
-        self, config_entry: ConfigEntry, country: str, region: str
-    ) -> None:
-        """Initialize the school days to vacation sensor."""
-        self._config_entry = config_entry
-        self._country = country
-        self._region = region
-
-        self._attr_unique_id = f"{config_entry.entry_id}_school_days_to_vacation"
-        self._attr_name = "Školní dny do prázdnin" if country == COUNTRY_CZ else "Školské dni do prázdnin"
-
-    @property
-    def device_info(self):
-        """Return device info."""
-        return {
-            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
-            "name": f"CZ/SK Calendar ({self._config_entry.title})",
-            "manufacturer": "CZ/SK Calendar",
-            "model": f"{self._country} Calendar",
-        }
-
-    @property
-    def native_value(self) -> int:
-        """Return school days until next vacation."""
-        today = date.today()
-
-        # If on vacation, return 0
-        if is_vacation(today, self._country, self._region):
-            return 0
-
-        # Get next vacation start
-        start, name, _ = get_next_vacation(today, self._country, self._region)
-
-        # Count school days until vacation
-        count = 0
-        current = today
-        while current < start:
-            if is_school_day(current, self._country, self._region):
-                count += 1
-            current += timedelta(days=1)
-
-        return count
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attributes."""
-        today = date.today()
-
-        if is_vacation(today, self._country, self._region):
-            return {"on_vacation": True}
-
-        start, name, end = get_next_vacation(today, self._country, self._region)
-
-        return {
-            "on_vacation": False,
-            "next_vacation": name,
-            "next_vacation_start": start.isoformat(),
-            "next_vacation_end": end.isoformat(),
-        }
-
-    async def async_added_to_hass(self) -> None:
-        """Register callbacks when entity is added."""
-        self.async_on_remove(
-            async_track_time_change(
-                self.hass, self._async_update_at_midnight, hour=0, minute=0, second=0
-            )
-        )
-
-    @callback
-    def _async_update_at_midnight(self, now=None) -> None:
-        """Update the sensor at midnight."""
-        self.async_schedule_update_ha_state(True)
+        return attrs

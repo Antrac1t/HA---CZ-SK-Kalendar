@@ -11,19 +11,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import (
-    CONF_COUNTRY,
-    CONF_REGION,
-    CZ_REGIONS,
-    DOMAIN,
-    SK_REGIONS,
-    COUNTRY_CZ,
-)
-from .holidays import get_all_holidays, get_holiday_name, is_holiday
-from .vacations import (
+from .const import CONF_COUNTRY, CONF_REGION, COUNTRY_CZ, DOMAIN, CZ_REGIONS, SK_REGIONS
+from .core import (
+    get_all_holidays,
     get_all_vacations,
+    get_holiday_name,
     get_school_year,
     get_vacation_name,
+    is_holiday,
     is_vacation,
 )
 
