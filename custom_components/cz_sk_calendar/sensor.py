@@ -91,8 +91,13 @@ async def async_setup_entry(
             "mdi:cake-variant",
             lambda e: get_nameday(e.today, e._country),
         ),
+        # Next event sensors
+        CZSKNextHolidaySensor(config_entry, country),
+        CZSKNextVacationSensor(config_entry, country, region),
         # Countdown sensors
-        CZSKCountdownSensor(config_entry, country),
+        CZSKDaysToHolidaySensor(config_entry, country),
+        CZSKDaysToVacationSensor(config_entry, country, region),
+        CZSKWorkdaysToWeekendSensor(config_entry, country),
         # School year sensor
         CZSKSchoolYearSensor(config_entry, country, region),
         # Statistics sensors
@@ -227,6 +232,187 @@ class CZSKCountdownSensor(CZSKBaseSensor):
         tomorrow = today + timedelta(days=1)
         attrs["tomorrow_nameday"] = get_nameday(tomorrow, self._country)
 
+        return attrs
+
+
+class CZSKNextHolidaySensor(CZSKBaseSensor):
+    """Sensor for next holiday."""
+
+    def __init__(self, config_entry: ConfigEntry, country: str) -> None:
+        """Initialize the next holiday sensor."""
+        name = "Příští svátek" if country == COUNTRY_CZ else "Ďalší sviatok"
+        super().__init__(config_entry, "next_holiday", name, "mdi:calendar-arrow-right")
+
+    @property
+    def native_value(self) -> str:
+        """Return the name of the next holiday."""
+        today = self.today
+        _, name = get_next_holiday(today + timedelta(days=1), self._country)
+        return name
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        attrs = super().extra_state_attributes.copy()
+        today = self.today
+        next_date, name = get_next_holiday(today + timedelta(days=1), self._country)
+        attrs["date"] = next_date.isoformat()
+        attrs["days_until"] = (next_date - today).days
+        return attrs
+
+
+class CZSKNextVacationSensor(CZSKBaseSensor):
+    """Sensor for next vacation."""
+
+    def __init__(
+        self, config_entry: ConfigEntry, country: str, region: str
+    ) -> None:
+        """Initialize the next vacation sensor."""
+        name = "Příští prázdniny" if country == COUNTRY_CZ else "Ďalšie prázdniny"
+        super().__init__(config_entry, "next_vacation", name, "mdi:calendar-arrow-right")
+
+    @property
+    def native_value(self) -> str:
+        """Return the name of the next vacation."""
+        today = self.today
+        if is_vacation(today, self._country, self._region):
+            start, name, end = get_next_vacation(
+                today + timedelta(days=1), self._country, self._region
+            )
+        else:
+            start, name, end = get_next_vacation(today, self._country, self._region)
+        return name
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        attrs = super().extra_state_attributes.copy()
+        today = self.today
+        if is_vacation(today, self._country, self._region):
+            start, name, end = get_next_vacation(
+                today + timedelta(days=1), self._country, self._region
+            )
+        else:
+            start, name, end = get_next_vacation(today, self._country, self._region)
+        attrs["start_date"] = start.isoformat()
+        attrs["end_date"] = end.isoformat()
+        attrs["days_until"] = (start - today).days
+        attrs["duration_days"] = (end - start).days + 1
+        return attrs
+
+
+class CZSKDaysToHolidaySensor(CZSKBaseSensor):
+    """Sensor for days until next holiday."""
+
+    _attr_native_unit_of_measurement = "days"
+
+    def __init__(self, config_entry: ConfigEntry, country: str) -> None:
+        """Initialize the days to holiday sensor."""
+        name = "Dní do svátku" if country == COUNTRY_CZ else "Dní do sviatku"
+        super().__init__(config_entry, "days_to_holiday", name, "mdi:counter")
+
+    @property
+    def native_value(self) -> int:
+        """Return days until next holiday."""
+        today = self.today
+        if is_holiday(today, self._country):
+            return 0
+        next_date, _ = get_next_holiday(today + timedelta(days=1), self._country)
+        return (next_date - today).days
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        attrs = super().extra_state_attributes.copy()
+        today = self.today
+        if is_holiday(today, self._country):
+            attrs["holiday_name"] = get_holiday_name(today, self._country)
+        else:
+            next_date, name = get_next_holiday(today + timedelta(days=1), self._country)
+            attrs["next_holiday"] = name
+            attrs["next_holiday_date"] = next_date.isoformat()
+        return attrs
+
+
+class CZSKDaysToVacationSensor(CZSKBaseSensor):
+    """Sensor for days until next vacation."""
+
+    _attr_native_unit_of_measurement = "days"
+
+    def __init__(
+        self, config_entry: ConfigEntry, country: str, region: str
+    ) -> None:
+        """Initialize the days to vacation sensor."""
+        name = "Dní do prázdnin" if country == COUNTRY_CZ else "Dní do prázdnin"
+        super().__init__(config_entry, "days_to_vacation", name, "mdi:counter")
+
+    @property
+    def native_value(self) -> int:
+        """Return days until next vacation."""
+        today = self.today
+        if is_vacation(today, self._country, self._region):
+            return 0
+        start, _, _ = get_next_vacation(today, self._country, self._region)
+        return (start - today).days
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        attrs = super().extra_state_attributes.copy()
+        today = self.today
+        if is_vacation(today, self._country, self._region):
+            attrs["vacation_name"] = get_vacation_name(today, self._country, self._region)
+        else:
+            start, name, end = get_next_vacation(today, self._country, self._region)
+            attrs["next_vacation"] = name
+            attrs["next_vacation_start"] = start.isoformat()
+            attrs["next_vacation_end"] = end.isoformat()
+        return attrs
+
+
+class CZSKWorkdaysToWeekendSensor(CZSKBaseSensor):
+    """Sensor for workdays until weekend."""
+
+    _attr_native_unit_of_measurement = "days"
+
+    def __init__(self, config_entry: ConfigEntry, country: str) -> None:
+        """Initialize the workdays to weekend sensor."""
+        name = "Pracovní dny do víkendu" if country == COUNTRY_CZ else "Pracovné dni do víkendu"
+        super().__init__(config_entry, "workdays_to_weekend", name, "mdi:calendar-weekend")
+
+    @property
+    def native_value(self) -> int:
+        """Return workdays until weekend (Saturday)."""
+        today = self.today
+
+        # If it's weekend, return 0
+        if today.weekday() >= 5:
+            return 0
+
+        # Count workdays until Saturday
+        count = 0
+        current = today
+        while current.weekday() < 5:
+            if is_workday(current, self._country):
+                count += 1
+            current += timedelta(days=1)
+
+        return count
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional attributes."""
+        attrs = super().extra_state_attributes.copy()
+        today = self.today
+
+        days_to_saturday = (5 - today.weekday()) % 7
+        if days_to_saturday == 0 and today.weekday() != 5:
+            days_to_saturday = 7
+        next_saturday = today + timedelta(days=days_to_saturday)
+
+        attrs["next_weekend"] = next_saturday.isoformat()
+        attrs["is_weekend"] = today.weekday() >= 5
+        attrs["day_of_week"] = today.strftime("%A")
         return attrs
 
 
