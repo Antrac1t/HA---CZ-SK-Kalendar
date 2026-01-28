@@ -23,15 +23,24 @@ Dynamický kalendář a senzory školních a pracovních dnů pro **Českou repu
 | Podzimní | čtvrtek a pátek v týdnu s 29.10. | 30.10. - 31.10. |
 | Vánoční | 23.12. - 2.1. | 23.12. - 7.1. |
 | Pololetní | pátek po konci 1. pololetí | pondělí po konci 1. pololetí |
-| Jarní | podle regionu (rotace) | podle regionu (západ/střed/východ) |
+| Jarní | podle okresu (6 skupin, rotace) | podle regionu (západ/střed/východ) |
 | Velikonoční | čtvrtek - pondělí | čtvrtek - úterý |
 
 ### Regionální podpora jarních prázdnin
 
-#### Česká republika (14 krajů)
-Praha, Středočeský, Jihočeský, Plzeňský, Karlovarský, Ústecký, Liberecký, Královéhradecký, Pardubický, Vysočina, Jihomoravský, Olomoucký, Zlínský, Moravskoslezský
+#### Česká republika (77 okresů v 6 skupinách)
+Jarní prázdniny v ČR se řídí podle **okresů** (ne krajů). Okresy jsou rozděleny do 6 skupin, které rotují v 6 týdnech od prvního pondělí v únoru:
 
-#### Slovensko (8 krajů)
+| Skupina | Okresy |
+|---------|--------|
+| 1. týden | Chomutov, Jeseník, Jičín, Mladá Boleslav, Most, Olomouc, Opava, Prachatice, Příbram, Rychnov n.K., Strakonice, Šumperk, Tábor, Ústí n.L. |
+| 2. týden | Benešov, Beroun, České Budějovice, Český Krumlov, Klatovy, Pardubice, Chrudim, Rokycany, Svitavy, Ústí n.O., Ostrava-město, Prostějov |
+| 3. týden | Praha 1-5, Blansko, Brno-město, Brno-venkov, Břeclav, Hodonín, Vyškov, Znojmo, Domažlice, Tachov, Louny, Karviná |
+| 4. týden | Praha 6-10, Cheb, Karlovy Vary, Sokolov, Nymburk, Jindřichův Hradec, Litoměřice, Děčín, Přerov, Frýdek-Místek |
+| 5. týden | Praha-východ, Praha-západ, Mělník, Rakovník, Plzeň-město, Plzeň-jih, Plzeň-sever, Hradec Králové, Teplice, Nový Jičín, Uherské Hradiště, Vsetín, Zlín, Trutnov, Kroměříž |
+| 6. týden | Česká Lípa, Jablonec n.N., Liberec, Semily, Havlíčkův Brod, Jihlava, Pelhřimov, Třebíč, Žďár n.S., Kladno, Kolín, Kutná Hora, Písek, Náchod, Bruntál |
+
+#### Slovensko (8 krajů ve 3 skupinách)
 - **Západ**: Bratislavský, Trnavský, Nitriansky
 - **Střed**: Trenčiansky, Žilinský, Banskobystrický
 - **Východ**: Prešovský, Košický
@@ -61,7 +70,7 @@ Praha, Středočeský, Jihočeský, Plzeňský, Karlovarský, Ústecký, Liberec
 2. Klikněte "Přidat integraci"
 3. Vyhledejte "CZ/SK School & Work Calendar"
 4. Vyberte zemi (Česká republika / Slovensko)
-5. Vyberte váš region
+5. Vyberte váš **okres** (CZ) nebo **kraj** (SK) pro správné jarní prázdniny
 
 ## Vytvořené entity
 
