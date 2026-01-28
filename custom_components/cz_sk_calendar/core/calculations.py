@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from functools import lru_cache
 
-from ..const import COUNTRY_CZ, COUNTRY_SK, SK_REGION_GROUPS
+from ..const import COUNTRY_CZ, COUNTRY_SK, SK_REGION_GROUPS, CZ_SPRING_GROUPS
 
 
 @lru_cache(maxsize=128)
@@ -243,37 +243,37 @@ def calc_semester_vacation(school_year: int, country: str) -> tuple[date, date, 
         return first_monday, first_monday, "Polročné prázdniny"
 
 
-# Czech spring vacation groups - regions rotate through these groups
-CZ_SPRING_GROUPS = [
-    ["praha", "stredocesky", "kralovehradecky", "pardubicky"],
-    ["jihocesky", "plzensky", "vysocina", "karlovarsky"],
-    ["ustecky", "liberecky", "jihomoravsky", "olomoucky"],
-    ["zlinsky", "moravskoslezsky"],
-]
-
-
 def calc_spring_vacation(school_year: int, country: str, region: str) -> tuple[date, date, str]:
-    """Calculate spring vacation dates (varies by region)."""
+    """Calculate spring vacation dates (varies by region/district).
+
+    CZ: 6 groups of districts rotating over 6 weeks starting first Monday of February
+    SK: 3 regional groups (west, central, east) rotating over 3 weeks starting third Monday of February
+    """
     if country == COUNTRY_CZ:
-        # Find which group this region belongs to
+        # Find which group (0-5) this district belongs to
         group_index = 0
         for i, group in enumerate(CZ_SPRING_GROUPS):
             if region in group:
                 group_index = i
                 break
 
-        reference_year = 2024
+        # Reference: school year 2025/2026 - groups are in order 1-6 for weeks 1-6
+        # For other years, the groups rotate
+        reference_year = 2025
         year_offset = school_year - reference_year
-        effective_group = (group_index - year_offset) % 4
+        # Groups rotate: each year the schedule shifts
+        effective_group = (group_index + year_offset) % 6
 
+        # Find first Monday of February
         feb_1 = date(school_year + 1, 2, 1)
         days_until_monday = (7 - feb_1.weekday()) % 7
         if feb_1.weekday() == 0:
             days_until_monday = 0
         first_monday = feb_1 + timedelta(days=days_until_monday)
 
+        # Start date is first Monday + weeks offset
         start = first_monday + timedelta(weeks=effective_group)
-        end = start + timedelta(days=4)
+        end = start + timedelta(days=4)  # Monday to Friday
         return start, end, "Jarní prázdniny"
     else:
         # Slovak spring vacation
