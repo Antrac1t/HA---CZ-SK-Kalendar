@@ -197,23 +197,19 @@ def calc_autumn_vacation(year: int, country: str) -> tuple[date, date, str]:
 
 
 def calc_christmas_vacation(school_year: int, country: str) -> tuple[date, date, str]:
-    """Calculate Christmas vacation dates (Dec 23 - ~Jan 2-5)."""
-    start = date(school_year, 12, 23)
+    """Calculate Christmas vacation dates.
 
-    jan_2 = date(school_year + 1, 1, 2)
-    days_until_monday = (7 - jan_2.weekday()) % 7
-    if days_until_monday == 0 and jan_2.weekday() != 0:
-        days_until_monday = 7
-    first_monday = jan_2 + timedelta(days=days_until_monday)
-    if first_monday.day == 2:
-        first_monday = jan_2
-
-    end = first_monday - timedelta(days=1)
-    if end < jan_2:
-        end = jan_2
-
-    name = "Vánoční prázdniny" if country == COUNTRY_CZ else "Vianočné prázdniny"
-    return start, end, name
+    CZ: Dec 23 - Jan 2 (fixed)
+    SK: Dec 22 - Jan 7 (fixed)
+    """
+    if country == COUNTRY_CZ:
+        start = date(school_year, 12, 23)
+        end = date(school_year + 1, 1, 2)
+        return start, end, "Vánoční prázdniny"
+    else:
+        start = date(school_year, 12, 22)
+        end = date(school_year + 1, 1, 7)
+        return start, end, "Vianočné prázdniny"
 
 
 def calc_semester_vacation(school_year: int, country: str) -> tuple[date, date, str]:
@@ -277,6 +273,7 @@ def calc_spring_vacation(school_year: int, country: str, region: str) -> tuple[d
         return start, end, "Jarní prázdniny"
     else:
         # Slovak spring vacation
+        # 3 groups rotating over 3 weeks starting third Monday of February
         group_name = "west"
         for name, regions in SK_REGION_GROUPS.items():
             if region in regions:
@@ -286,9 +283,13 @@ def calc_spring_vacation(school_year: int, country: str, region: str) -> tuple[d
         group_order = ["west", "central", "east"]
         group_index = group_order.index(group_name)
 
-        reference_year = 2024
+        # Reference: school year 2025/2026
+        # Week 1 (Feb 16-20): West (Bratislavský, Nitrianský, Trnavský)
+        # Week 2 (Feb 23-27): Central (Banskobystrický, Trenčianský, Žilinský)
+        # Week 3 (Mar 2-6): East (Prešovský, Košický)
+        reference_year = 2025
         year_offset = school_year - reference_year
-        effective_slot = (group_index - year_offset) % 3
+        effective_slot = (group_index + year_offset) % 3
 
         feb_1 = date(school_year + 1, 2, 1)
         days_until_monday = (7 - feb_1.weekday()) % 7

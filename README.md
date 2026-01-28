@@ -21,7 +21,7 @@ Dynamický kalendář a senzory školních a pracovních dnů pro **Českou repu
 |-----------|-----------------|-----------|
 | Letní | 1.7. - 31.8. | 1.7. - 31.8. |
 | Podzimní | čtvrtek a pátek v týdnu s 29.10. | 30.10. - 31.10. |
-| Vánoční | 23.12. - 2.1. | 23.12. - 7.1. |
+| Vánoční | 23.12. - 2.1. | 22.12. - 7.1. |
 | Pololetní | pátek po konci 1. pololetí | pondělí po konci 1. pololetí |
 | Jarní | podle okresu (6 skupin, rotace) | podle regionu (západ/střed/východ) |
 | Velikonoční | čtvrtek - pondělí | čtvrtek - úterý |
@@ -41,9 +41,13 @@ Jarní prázdniny v ČR se řídí podle **okresů** (ne krajů). Okresy jsou ro
 | 6. týden | Česká Lípa, Jablonec n.N., Liberec, Semily, Havlíčkův Brod, Jihlava, Pelhřimov, Třebíč, Žďár n.S., Kladno, Kolín, Kutná Hora, Písek, Náchod, Bruntál |
 
 #### Slovensko (8 krajů ve 3 skupinách)
-- **Západ**: Bratislavský, Trnavský, Nitriansky
-- **Střed**: Trenčiansky, Žilinský, Banskobystrický
-- **Východ**: Prešovský, Košický
+Jarní prázdniny na Slovensku trvají jeden týden a jsou rozděleny do 3 turnusů od třetího pondělí v únoru:
+
+| Turnus | Kraje |
+|--------|-------|
+| 1. týden | Bratislavský, Nitrianský, Trnavský (západ) |
+| 2. týden | Banskobystrický, Trenčianský, Žilinský (střed) |
+| 3. týden | Prešovský, Košický (východ) |
 
 ## Instalace
 
